@@ -3,14 +3,14 @@
 #include <iostream>
 #include <random>
 #include <thread>
-//#include <memory>
-#include <string>
-#include <chrono>
-
+#include <memory>
+#include <queue>
+#include <tuple>
 const int REF_STR_SIZE = 20;
 int inputPageFrames();
 std::unique_ptr<int[]> makeRefString();
 bool isAlreadyInFrame(std::unique_ptr<int[]>&, const int&, const int&);
+int findFurthestPageIndex(const std::unique_ptr<int[]>&, const std::unique_ptr<int[]>&, const int&, const int&);
 int FIFO(const std::unique_ptr<int[]>&, const int&);
 int LRU(const std::unique_ptr<int[]>&, const int&);
 int OPT(const std::unique_ptr<int[]>&, const int&);
@@ -20,7 +20,9 @@ int main() {
 	int pageFrames = inputPageFrames();
 	std::unique_ptr<int[]> refString = makeRefString();
 	
-	std::cout << "FIFO page faults: " << FIFO(refString, pageFrames);
+	std::cout << "FIFO page faults: " << FIFO(refString, pageFrames) << std::endl;
+	std::cout << "LRU page faults: " << LRU(refString, pageFrames) << std::endl;
+	std::cout << "OPT page faults: " << OPT(refString, pageFrames);
 	std::cin.get();
 	return 0;
 }
@@ -29,7 +31,6 @@ int FIFO(const std::unique_ptr<int[]>& refString, const int& pageFrames){
 	int pageFaults = 0;
 	int framePointer = 0;
 	std::unique_ptr<int[]> frames = std::make_unique<int[]>(pageFrames);
-
 	for (int i = 0; i < pageFrames; i++)
 		frames[i] = refString[i];
 
@@ -46,10 +47,26 @@ int FIFO(const std::unique_ptr<int[]>& refString, const int& pageFrames){
 int LRU(const std::unique_ptr<int[]>& refString, const int& pageFrames) {
 	int pageFaults = 0;
 	std::unique_ptr<int[]> frames = std::make_unique<int[]>(pageFrames);
+	std::queue<std::tuple<int, int>> leastRefQueue;
 
-	for (int i = 0; i < pageFrames; i++)
+	for (int i = 0; i < pageFrames; i++) {
 		frames[i] = refString[i];
+		leastRefQueue.emplace(refString[i], i);
+	}
 
+	for (int i = pageFrames; i < REF_STR_SIZE; i++) {
+		if (isAlreadyInFrame(frames, refString[i], pageFrames)) {
+			leastRefQueue.push(leastRefQueue.front());
+			leastRefQueue.pop();
+		}
+		else 	{
+			int index = std::get<1>(leastRefQueue.front());
+			frames[index] = refString[i];
+			leastRefQueue.emplace(refString[i], index);
+			leastRefQueue.pop();
+			pageFaults++;
+		}
+	}
 	return pageFaults;
 }
 int OPT(const std::unique_ptr<int[]>& refString, const int& pageFrames) {
@@ -59,15 +76,53 @@ int OPT(const std::unique_ptr<int[]>& refString, const int& pageFrames) {
 	for (int i = 0; i < pageFrames; i++)
 		frames[i] = refString[i];
 
+	for (int i = pageFrames; i < REF_STR_SIZE; i++) 		{
+
+		if (!isAlreadyInFrame(frames, refString[i], pageFrames)) 	{
+			frames[findFurthestPageIndex(refString, frames, i, pageFrames)] = refString[i];
+			pageFaults++;
+		}
+
+	}
 	return pageFaults;
 }
 
-bool isAlreadyInFrame(std::unique_ptr<int[]>& frames, const int& pageNumb, const int& pageFrames) {
-	for (int i = 0; i < pageFrames; i++) 		{
-		if (frames[i] == pageNumb) 	{
-			return true;
+int findFurthestPageIndex(const std::unique_ptr<int[]>& refString, const std::unique_ptr<int[]>& frames, const int& currPos, const int& pageFrames) {
+	
+	int firstRefArray[10] = {}; //hold when a page is first referenced
+	int numFoundFrames = 0;
+
+	for (int i = currPos; i < REF_STR_SIZE; i++) 		{
+		if (numFoundFrames == pageFrames - 1)
+			break;
+		
+		if (firstRefArray[refString[i]] == 0) {
+			firstRefArray[refString[i]] = i;
+			numFoundFrames++;
 		}
 	}
+
+	int maxPageIndex = -1;
+	int pageFrameIndex = -1;
+
+	for (int i = 0; i < pageFrames; i++) {
+		if (firstRefArray[frames[i]] == 0) 	{ //if frame # not discovered
+			return i;
+		}
+		if (firstRefArray[frames[i]] > maxPageIndex) 	{
+			maxPageIndex = firstRefArray[i];
+			pageFrameIndex = i;
+		}
+
+	}
+
+	return pageFrameIndex;
+}
+bool isAlreadyInFrame(std::unique_ptr<int[]>& frames, const int& pageNumb, const int& pageFrames) {
+	for (int i = 0; i < pageFrames; i++) 
+		if (frames[i] == pageNumb)
+			return true;
+
 	return false;
 }
 
